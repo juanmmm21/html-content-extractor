@@ -77,6 +77,12 @@ class _TreeBuildingParser(HTMLParser):
                 self._skip_depth += 1
             return
 
+        if tag_lower in SKIPPED_TAGS:
+            # Nunca se añade al árbol (ver `domtree.SKIPPED_TAGS`): ni el propio nodo ni su
+            # contenido deben poder colarse como candidato o como texto de ningún ancestro.
+            self._skip_depth = 1
+            return
+
         if tag_lower in _IMPLICIT_P_CLOSERS and self._current.tag == "p":
             self._stack.pop()
 
@@ -87,9 +93,6 @@ class _TreeBuildingParser(HTMLParser):
         )
         self._current.children.append(node)
 
-        if tag_lower in SKIPPED_TAGS:
-            self._skip_depth = 1
-            return
         if not self_closing and tag_lower not in VOID_TAGS:
             self._stack.append(node)
 
