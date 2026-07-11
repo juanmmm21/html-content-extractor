@@ -147,6 +147,15 @@ html-content-extractor extract ./crawl-output/pages.jsonl \
 html-content-extractor stats ./extracted/documents.jsonl
 ```
 
+Try it end-to-end against the tiny fixture checked into `samples/tiny_example/`
+(two hand-written pages with realistic nav/header/footer boilerplate wrapped
+around a real article, so the density heuristic has something to prove):
+
+```bash
+html-content-extractor extract samples/tiny_example/pages.jsonl --output-dir /tmp/extracted-example
+html-content-extractor stats /tmp/extracted-example/documents.jsonl
+```
+
 It can also be invoked as a module: `python -m html_content_extractor extract ...`.
 
 ## Data formats
