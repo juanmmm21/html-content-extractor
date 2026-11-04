@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "html-content-extractor"
-version = "0.1.0"
+version = "0.2.0"
 description = "A boilerplate-removal pipeline that extracts clean main content, titles, and metadata from raw crawled HTML."
 readme = "README.md"
 requires-python = ">=3.11"

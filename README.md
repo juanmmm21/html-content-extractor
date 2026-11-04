@@ -114,6 +114,7 @@ src/html_content_extractor/
 ├── density.py           # from-scratch text-density boilerplate-removal heuristic
 ├── metadata.py            # title / author / published date / language extraction
 ├── normalize.py             # Unicode NFC + whitespace normalization
+├── simhash.py                 # 64-bit SimHash fingerprints + banded near-duplicate index
 ├── pipeline.py                # ExtractionPipeline: orchestrates everything above
 └── __main__.py                 # CLI (`extract`, `stats`)
 ```
@@ -178,7 +179,9 @@ of [`inverted-index-builder`](https://github.com/juanmmm21/inverted-index-builde
   "extracted_at": "2026-07-08T17:00:00+00:00",
   "encoding_used": "utf-8",
   "depth": 1,
-  "word_count": 214
+  "word_count": 214,
+  "simhash": "8f3a5c0e9b12d4f7",
+  "near_duplicate_of": null
 }
 ```
 
@@ -195,8 +198,39 @@ for auditing:
 ```
 
 `reason` is one of `non_html_content`, `parse_error` (pathological HTML
-nesting) or `empty_main_content` (nothing scored highly enough under the
-density heuristic).
+nesting), `empty_main_content` (nothing scored highly enough under the
+density heuristic) or `near_duplicate` (only with `--near-duplicates discard`).
+
+### Near-duplicate fingerprints (from `0.2.0`)
+
+Every document now carries `simhash`, a 64-bit SimHash of `main_text` as 16
+lowercase hex digits, and `near_duplicate_of`, the URL of an already-extracted
+document whose fingerprint is within `--near-duplicate-max-distance` bits
+(default 3, the threshold Manku et al. used for web pages), or `null`. Both
+fields are additions: readers that ignore unknown fields — like
+`inverted-index-builder` — are unaffected, and `ExtractedDocument.from_json_dict`
+still reads a pre-0.2.0 `documents.jsonl` without them.
+
+How the fingerprint is computed: `main_text` is tokenized with the same
+normalization `inverted-index-builder` uses (NFC, `casefold`, runs of letters
+and digits), split into 3-word shingles (so the same vocabulary in a different
+order is not a duplicate), each shingle is hashed to 64 bits with BLAKE2b
+(stable across processes, unlike Python's `hash()`), and each output bit is the
+sign of the count-weighted vote of every shingle's bit. Lookups split the
+fingerprint into `k + 1` bands for a threshold of `k` bits: two fingerprints
+within `k` bits must agree on at least one band (pigeonhole), so only
+candidates sharing a band are compared in full.
+
+```bash
+# Default: annotate near-duplicates and keep them
+html-content-extractor extract ./crawl/pages.jsonl --output-dir ./extracted
+
+# Incremental batch: detect duplicates against the existing corpus and drop them
+html-content-extractor extract ./recrawl-002/pages.jsonl --output-dir ./batch-002 \
+  --existing-documents ./extracted/documents.jsonl --near-duplicates discard
+```
+
+A new version of the same URL is never flagged as a duplicate of itself.
 
 ## Programmatic usage
 
