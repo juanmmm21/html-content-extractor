@@ -24,8 +24,15 @@ from html_content_extractor.models import (
     ExtractedDocument,
     ExtractionConfig,
     ExtractionStats,
+    NearDuplicateMode,
 )
 from html_content_extractor.normalize import normalize_text
+from html_content_extractor.simhash import (
+    NearDuplicateIndex,
+    format_fingerprint,
+    parse_fingerprint,
+    simhash64,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +71,7 @@ class ExtractionPipeline:
         self._documents_file: TextIO | None = None
         self._discarded_file: TextIO | None = None
         self._stats = ExtractionStats()
+        self._near_duplicates = NearDuplicateIndex(config.near_duplicate_max_distance)
 
     def __enter__(self) -> ExtractionPipeline:
         self._documents_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,6 +86,28 @@ class ExtractionPipeline:
                 handle.close()
         self._documents_file = None
         self._discarded_file = None
+
+    def prime_near_duplicates(self, documents_path: Path) -> int:
+        """Carga las huellas de un `documents.jsonl` ya extraído, para que una
+        extracción incremental detecte casi-duplicados contra el corpus
+        existente y no solo dentro del lote. Los documentos sin huella
+        (anteriores a 0.2.0) se huellan aquí. Devuelve cuántos se cargaron."""
+        if self._config.near_duplicate_mode is NearDuplicateMode.OFF:
+            return 0
+        loaded = 0
+        with documents_path.open("r", encoding="utf-8") as documents_file:
+            for raw_line in documents_file:
+                if not raw_line.strip():
+                    continue
+                document = ExtractedDocument.from_json_dict(json.loads(raw_line))
+                fingerprint = (
+                    parse_fingerprint(document.simhash)
+                    if document.simhash is not None
+                    else simhash64(document.main_text)
+                )
+                self._near_duplicates.add(document.url, fingerprint)
+                loaded += 1
+        return loaded
 
     def run(self, pages_path: Path) -> ExtractionStats:
         with pages_path.open("r", encoding="utf-8") as pages_file:
@@ -132,6 +162,23 @@ class ExtractionPipeline:
         metadata = extract_metadata(root)
         normalized_text = normalize_text(main_content.text)
 
+        fingerprint: int | None = None
+        near_duplicate_of: str | None = None
+        if self._config.near_duplicate_mode is not NearDuplicateMode.OFF:
+            fingerprint = simhash64(normalized_text)
+            # Una versión nueva de la misma URL no es un duplicado de sí misma.
+            matches = [m for m in self._near_duplicates.find(fingerprint) if m.url != url]
+            if matches:
+                near_duplicate_of = matches[0].url
+                if self._config.near_duplicate_mode is NearDuplicateMode.DISCARD:
+                    self._discard(
+                        url,
+                        DiscardReason.NEAR_DUPLICATE,
+                        f"casi-duplicado de {matches[0].url} "
+                        f"(distancia de Hamming {matches[0].distance})",
+                    )
+                    return
+
         document = ExtractedDocument(
             url=url,
             final_url=final_url,
@@ -145,7 +192,11 @@ class ExtractionPipeline:
             encoding_used=encoding_used,
             depth=depth,
             word_count=len(normalized_text.split()),
+            simhash=format_fingerprint(fingerprint) if fingerprint is not None else None,
+            near_duplicate_of=near_duplicate_of,
         )
+        if fingerprint is not None:
+            self._near_duplicates.add(url, fingerprint)
         self._write_document(document)
         self._stats.record_extracted()
 

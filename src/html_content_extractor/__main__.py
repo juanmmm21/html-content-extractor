@@ -9,7 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from html_content_extractor.models import ExtractionConfig
+from html_content_extractor.models import ExtractionConfig, NearDuplicateMode
 from html_content_extractor.pipeline import ExtractionPipeline
 
 logger = logging.getLogger("html_content_extractor")
@@ -32,6 +32,19 @@ def _build_parser() -> argparse.ArgumentParser:
     extract_parser.add_argument("--min-main-content-chars", type=int, default=200)
     extract_parser.add_argument("--min-block-text-chars", type=int, default=25)
     extract_parser.add_argument("--link-density-threshold", type=float, default=0.5)
+    extract_parser.add_argument(
+        "--near-duplicates",
+        choices=[mode.value for mode in NearDuplicateMode],
+        default=NearDuplicateMode.ANNOTATE.value,
+        help="annotate: marca near_duplicate_of; discard: los descarta; off: sin SimHash",
+    )
+    extract_parser.add_argument("--near-duplicate-max-distance", type=int, default=3)
+    extract_parser.add_argument(
+        "--existing-documents",
+        type=Path,
+        default=None,
+        help="documents.jsonl ya extraído contra el que detectar casi-duplicados",
+    )
 
     stats_parser = subparsers.add_parser(
         "stats", help="Muestra estadísticas de un documents.jsonl"
@@ -51,7 +64,13 @@ def _run_extract(args: argparse.Namespace) -> int:
         min_main_content_chars=args.min_main_content_chars,
         min_block_text_chars=args.min_block_text_chars,
         link_density_threshold=args.link_density_threshold,
+        near_duplicate_mode=NearDuplicateMode(args.near_duplicates),
+        near_duplicate_max_distance=args.near_duplicate_max_distance,
     )
+    existing: Path | None = args.existing_documents
+    if existing is not None and not existing.exists():
+        print(f"Error: no existe {existing}", file=sys.stderr)
+        return 2
 
     output_dir: Path = args.output_dir
     with ExtractionPipeline(
@@ -59,6 +78,8 @@ def _run_extract(args: argparse.Namespace) -> int:
         output_dir / "documents.jsonl",
         output_dir / "discarded.jsonl",
     ) as pipeline:
+        if existing is not None:
+            pipeline.prime_near_duplicates(existing)
         stats = pipeline.run(pages_path)
 
     print(

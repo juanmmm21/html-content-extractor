@@ -21,6 +21,19 @@ class DiscardReason(StrEnum):
     PARSE_ERROR = "parse_error"
     NON_HTML_CONTENT = "non_html_content"
     EMPTY_MAIN_CONTENT = "empty_main_content"
+    NEAR_DUPLICATE = "near_duplicate"
+
+
+class NearDuplicateMode(StrEnum):
+    """Qué hacer con un documento cuya huella SimHash está a `<= max_distance`
+    bits de otro ya extraído (ver `simhash.py`)."""
+
+    OFF = "off"
+    """No se calcula huella."""
+    ANNOTATE = "annotate"
+    """Se emite igualmente, con `near_duplicate_of` apuntando al original."""
+    DISCARD = "discard"
+    """Se descarta con motivo `near_duplicate`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +79,12 @@ class ExtractionConfig:
         "newsletter",
     )
 
+    near_duplicate_mode: NearDuplicateMode = NearDuplicateMode.ANNOTATE
+    near_duplicate_max_distance: int = 3
+
     def __post_init__(self) -> None:
+        if not 0 <= self.near_duplicate_max_distance < 32:
+            raise ValueError("near_duplicate_max_distance debe estar en [0, 31]")
         if self.min_main_content_chars <= 0:
             raise ValueError("min_main_content_chars debe ser positivo")
         if self.min_block_text_chars <= 0:
@@ -109,6 +127,10 @@ class ExtractedDocument:
     encoding_used: str
     depth: int
     word_count: int
+    simhash: str | None = None
+    """Huella SimHash de 64 bits de `main_text` en 16 dígitos hex (desde 0.2.0)."""
+    near_duplicate_of: str | None = None
+    """URL del documento ya extraído del que este es casi-duplicado, si lo hay."""
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -126,6 +148,8 @@ class ExtractedDocument:
             "encoding_used": self.encoding_used,
             "depth": self.depth,
             "word_count": self.word_count,
+            "simhash": self.simhash,
+            "near_duplicate_of": self.near_duplicate_of,
         }
 
     @staticmethod
@@ -147,6 +171,11 @@ class ExtractedDocument:
             encoding_used=str(data["encoding_used"]),
             depth=int(data["depth"]),
             word_count=int(data["word_count"]),
+            # Opcionales: un documents.jsonl anterior a 0.2.0 no los trae.
+            simhash=None if data.get("simhash") is None else str(data["simhash"]),
+            near_duplicate_of=(
+                None if data.get("near_duplicate_of") is None else str(data["near_duplicate_of"])
+            ),
         )
 
 
