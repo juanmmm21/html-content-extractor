@@ -26,6 +26,16 @@ class TestExtractTitle:
 
         assert metadata.title == "The Heading Title"
 
+    def test_h1_title_ignores_buttons_inside_the_heading(self) -> None:
+        root = parse_html(
+            "<html><body><h1>Primitive Type <span>bool</span>&nbsp;"
+            '<button id="copy-path">Copy item path</button></h1></body></html>'
+        )
+
+        metadata = extract_metadata(root)
+
+        assert metadata.title == "Primitive Type bool"
+
     def test_falls_back_to_title_tag_when_no_h1_or_og_title(self) -> None:
         root = parse_html("<html><head><title>Only Title Tag</title></head><body></body></html>")
 

@@ -27,6 +27,22 @@ def _meta_content(root: DomNode, attr: str, value: str) -> str | None:
     return None
 
 
+_NON_TITLE_TAGS = frozenset({"button", "script", "style", "template", "svg"})
+
+
+def _heading_text(node: DomNode) -> str:
+    """Texto de un encabezado sin el de sus controles: generadores como
+    rustdoc meten un `<button>Copy item path</button>` dentro del `<h1>`, y
+    ese texto acababa formando parte del título del documento."""
+    parts: list[str] = []
+    for child in node.children:
+        if isinstance(child, str):
+            parts.append(child)
+        elif child.tag not in _NON_TITLE_TAGS:
+            parts.append(_heading_text(child))
+    return "".join(parts)
+
+
 def _extract_title(root: DomNode) -> str:
     og_title = _meta_content(root, "property", "og:title")
     if og_title:
@@ -34,7 +50,7 @@ def _extract_title(root: DomNode) -> str:
 
     heading = root.find_first("h1")
     if heading is not None:
-        heading_text = collapse_whitespace(heading.text_content())
+        heading_text = collapse_whitespace(_heading_text(heading))
         if heading_text:
             return heading_text
 
