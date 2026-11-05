@@ -87,12 +87,16 @@ meaningful vocabulary to tokenize, index or rank.
    scored; scores propagate to parent and grandparent containers; the
    winning container (plus its own `class`/`id` hint) is used as the root of
    the article, with structurally boilerplate sub-trees (`nav`, `header`,
-   `footer`, `aside`, `form`) and link-heavy sub-trees pruned out. If no
+   `footer`, `aside`, `form`) and link-heavy block sub-trees pruned out.
+   Inline elements (`a`, `code`, `span`, `em`...) are never pruned and stay
+   inside their sentence: before `0.2.0` an inline link counted as a
+   link-heavy block and vanished, which in technical documentation removed
+   most linked identifiers (`using create_task().` came out as `using .`). If no
    container scores highly enough, the whole document is used as a
    fallback so short, legitimate pages aren't lost to an over-strict
    heuristic.
-5. **Metadata extraction** (`metadata.py`): title (`og:title` → first `<h1>`
-   → `<title>`), author, published date and language, each resolved from the
+5. **Metadata extraction** (`metadata.py`): title (`og:title` → first `<h1>`,
+   ignoring buttons inside it such as rustdoc's "Copy item path" → `<title>`), author, published date and language, each resolved from the
    most explicit signal available.
 6. **Normalization** (`normalize.py`): Unicode NFC normalization and
    whitespace collapsing, so the tokenizer in `inverted-index-builder`
