@@ -108,12 +108,46 @@ def _best_candidate(
     return best
 
 
+_INLINE_TAGS = frozenset(
+    {
+        "a",
+        "abbr",
+        "b",
+        "cite",
+        "code",
+        "data",
+        "dfn",
+        "em",
+        "i",
+        "kbd",
+        "mark",
+        "q",
+        "s",
+        "samp",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "time",
+        "u",
+        "var",
+    }
+)
+"""Elementos en línea: son parte de la frase que los contiene. Un enlace en
+línea tiene por definición densidad de enlaces 1 y poco texto, así que
+evaluarlo como bloque lo descartaba siempre — y en documentación técnica
+casi cada identificador (`create_task()`, `Vec::push`) es un enlace."""
+
+
 def _is_boilerplate_node(node: DomNode, config: ExtractionConfig) -> bool:
     """Un sub-árbol se descarta si es estructuralmente boilerplate (nav/aside/footer/form
     embebido) o si tiene mucho texto en enlaces y poco texto propio (p. ej. un bloque de
     "enlaces relacionados" incrustado en medio del cuerpo del artículo)."""
     if node.tag in STRUCTURAL_BOILERPLATE_TAGS:
         return True
+    if node.tag in _INLINE_TAGS:
+        return False
     text = collapse_whitespace(node.text_content())
     if not text:
         return False
@@ -134,6 +168,10 @@ def _collect_text_parts(node: DomNode, config: ExtractionConfig) -> list[str]:
     for child in node.children:
         if isinstance(child, str):
             text_buffer.append(child)
+            continue
+        if child.tag in _INLINE_TAGS:
+            # Texto en línea: sigue en la misma frase, no es un bloque aparte.
+            text_buffer.append(child.text_content())
             continue
         if text_buffer:
             buffered = collapse_whitespace("".join(text_buffer))

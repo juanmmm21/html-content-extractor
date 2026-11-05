@@ -99,3 +99,30 @@ class TestExtractMainContent:
 
         assert "strong positive signal" in result.text
         assert "unlabeled paragraph" not in result.text
+
+
+class TestInlineElements:
+    _DOCS_HTML = """
+<html><body><nav><a href="/">Home</a></nav>
+<div class="body" role="main">
+<p>Tasks can be added to the group using
+<a href="#create"><code><span>create_task()</span></code></a>.
+All tasks are awaited when the context manager exits, and the group keeps running until
+every task finishes, which makes structured concurrency the default for new code.</p>
+<p>A second paragraph explains cancellation: when one task fails, the others are cancelled and
+the exception is propagated to the code that entered the group, as an exception group.</p>
+<div class="see-also"><a href="/a">Runners</a> <a href="/b">Streams</a></div>
+</div></body></html>
+"""
+
+    def test_inline_links_stay_in_their_sentence(self) -> None:
+        result = extract_main_content(parse_html(self._DOCS_HTML), ExtractionConfig())
+
+        flat = " ".join(result.text.split())
+        assert "added to the group using create_task(). All tasks are awaited" in flat
+
+    def test_link_only_blocks_are_still_boilerplate(self) -> None:
+        result = extract_main_content(parse_html(self._DOCS_HTML), ExtractionConfig())
+
+        assert "Runners" not in result.text
+        assert "Home" not in result.text
